@@ -1,0 +1,16 @@
+[Unit]
+Description=Giustup: sync dei lavori parlamentari collegati alle leggi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/giustup-sync-lavoriparlamentari
+ExecStart=/usr/bin/flock -n /run/lock/giustup-lavoriparlamentari.lock /usr/bin/python3 /opt/giustup-sync-lavoriparlamentari/lavoriparlamentari.py --massimo 900
+Environment="GIUSTUP_OPENSEARCH=https://localhost:9200"
+User=root
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

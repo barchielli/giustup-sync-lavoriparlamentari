@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+stato-sync/
+lavorazione/
+insuccessi.csv
+*.log

@@ -1,0 +1,10 @@
+[Unit]
+Description=Giustup: giro notturno dei lavori parlamentari
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=giustup-lavoriparlamentari.service
+
+[Install]
+WantedBy=timers.target
