@@ -106,14 +106,12 @@ TESTATE = {
 
 # dati.camera.it applica rate-limit: si sta gentili e si riprova sui 5xx.
 PAUSA_FRA_RICHIESTE = 1.0
-# pausa fissa fra una legge e l'altra, anche quando la legge non ha documenti:
-# senza, un giro che scorre decine di leggi senza lavori martella il portale e
-# comincia a rispondere vuoto (rate-limit 'morbido' di dati.camera.it), facendo
-# sembrare la fonte sprovvista di lavori. Misurato il 7.11.2026: a 0.6s/legge il
-# ciclo fa ~3 richieste al secondo e sfiora il blocco; a 2.0s/legge si resta
-# sotto la soglia. Lo storico (decine di migliaia di leggi) resta un lavoro
-# lungo e va eseguito staccato, di notte.
-PAUSA_FRA_LEGGI = 2.0
+# pausa fissa fra una legge e l'altra. Con la struttura pre-caricata via SPARQL
+# il ciclo NON chiama piu' legge.rdf per ogni legge, quindi questa pausa e'
+# in gran parte tempo sprecato: lo storico a 2s/legge impiegava decine di ore.
+# Si porta a zero; il ritmo lo tengono la pausa di 1s fra documenti e il giro
+# di respiro PAUSA_LUNGA ogni PAUSA_OGNI, che bastano anche per documenti.camera.it.
+PAUSA_FRA_LEGGI = 0.0
 PAUSA_OGNI = 50
 PAUSA_LUNGA = 3.0
 TENTATIVI = 6
