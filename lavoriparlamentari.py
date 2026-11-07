@@ -107,9 +107,12 @@ TESTATE = {
 PAUSA_FRA_RICHIESTE = 1.0
 # pausa fissa fra una legge e l'altra, anche quando la legge non ha documenti:
 # senza, un giro che scorre decine di leggi senza lavori martella il portale e
-# comincia a rispondere 200-vuoto (rate-limit "morbido"), facendo sembrare la
-# fonte sprovvista di lavori. (misurato il 7.11.2026)
-PAUSA_FRA_LEGGI = 0.6
+# comincia a rispondere vuoto (rate-limit 'morbido' di dati.camera.it), facendo
+# sembrare la fonte sprovvista di lavori. Misurato il 7.11.2026: a 0.6s/legge il
+# ciclo fa ~3 richieste al secondo e sfiora il blocco; a 2.0s/legge si resta
+# sotto la soglia. Lo storico (decine di migliaia di leggi) resta un lavoro
+# lungo e va eseguito staccato, di notte.
+PAUSA_FRA_LEGGI = 2.0
 PAUSA_OGNI = 50
 PAUSA_LUNGA = 3.0
 TENTATIVI = 6
