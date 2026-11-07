@@ -505,13 +505,17 @@ Q_ATTO_META = (
 def struttura():
     """La mappa legge(urn)->atti e atto->documenti, caricata in blocco via SPARQL.
 
-    Ritorna (lex2atto, atto_info): il primo mappa l'URN Normattiva della legge
-    (la chiave dell'archivio, forma con data: urn:nir:stato:legge:2018-08-09;98)
-    agli IRi degli atti Camera; il secondo gli IRi degli atti ai loro documenti
-    (pdf, scheda, titolo, data, legislatura)."""
+    L'URN nel `lex` di legge.rdf non e' uniforme: per le leggi recenti e' solo
+    l'anno (urn:nir:stato:legge:2019;7), per le piu' datate porta la data
+    (urn:nir:stato:legge:1946-12-23;478). L'archivio tiene la forma con data.
+    La giunzione passa da `normalizza_urn` (forma con solo anno) da ambo i lati.
+
+    Gli atti rilevanti sono quelli referenziati dalle leggi: la struttura si
+    carica in due fasi — prima la mappa legge->atti, poi i metadati degli atti
+    della mappa con query VALUES per lotti — e non si scandisce ogni ocd:atto."""
     lex2atto = {}
     for r in sparql_righe(Q_LEGGE_ATTO):
-        urn = r.get("lex", "").split("N2Ls?")[-1]
+        urn = normalizza_urn(r.get("lex", "").split("N2Ls?")[-1])
         atto = r.get("atto", "")
         if not urn or not atto:
             continue
@@ -519,29 +523,42 @@ def struttura():
         if atto not in lista:
             lista.append(atto)
 
+    atti = sorted({a for lista in lex2atto.values() for a in lista})
     atto_info = {}
-    for r in sparql_righe(Q_ATTO_PDF):
-        a = r.get("atto")
-        doc = r.get("doc", "")
-        if not a or ".pdf" not in doc:
-            continue
-        l = atto_info.setdefault(a, {}).setdefault("pdf", [])
-        if doc not in l:
-            l.append(doc)
-    for r in sparql_righe(Q_ATTO_SCHEDA):
-        a = r.get("atto")
-        if a:
-            atto_info.setdefault(a, {})["scheda"] = r.get("scheda", "")
-    for r in sparql_righe(Q_ATTO_META):
-        a = r.get("atto")
-        if a:
-            info = atto_info.setdefault(a, {})
-            if r.get("label"):
-                info["titolo"] = r["label"]
-            if r.get("data"):
-                info["data"] = r["data"]
-            if r.get("legisl"):
-                info["legislatura"] = r["legisl"].rsplit("_", 1)[-1]
+
+    def agg(a, pdf=None, titolo=None, data=None, scheda=None, legislatura=None):
+        info = atto_info.setdefault(a, {})
+        if pdf and ".pdf" in pdf:
+            l = info.setdefault("pdf", [])
+            if pdf not in l:
+                l.append(pdf)
+        if scheda:
+            info.setdefault("scheda", scheda)
+        if titolo:
+            info.setdefault("titolo", titolo)
+        if data:
+            info.setdefault("data", data)
+        if legislatura:
+            info.setdefault("legislatura", legislatura)
+
+    for i in range(0, len(atti), 800):
+        valori = " ".join("<%s>" % u for u in atti[i:i + 800])
+        q = ("SELECT ?atto ?pdf ?scheda ?label ?data ?legisl WHERE { "
+             "VALUES ?atto { %s } "
+             "?atto a <http://dati.camera.it/ocd/atto> . "
+             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/relation> ?pdf } . "
+             "OPTIONAL { ?atto <http://purl.org/dc/terms/isReferencedBy> ?scheda } . "
+             "OPTIONAL { ?atto <http://www.w3.org/2000/01/rdf-schema#label> ?label } . "
+             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/date> ?data } . "
+             "OPTIONAL { ?atto <http://dati.camera.it/ocd/rif_leg> ?legisl } }" % valori)
+        for r in sparql_righe(q, limite=100000):
+            a = r.get("atto")
+            if not a:
+                continue
+            agg(a, pdf=r.get("pdf"), titolo=r.get("label"), data=r.get("data"),
+                scheda=r.get("scheda"),
+                legislatura=(r.get("legisl", "").rsplit("_", 1)[-1] if r.get("legisl") else ""))
+        log("    struttura: %d/%d atti" % (min(i + 800, len(atti)), len(atti)))
     return lex2atto, atto_info
 
 
