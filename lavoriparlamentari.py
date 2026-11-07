@@ -565,9 +565,14 @@ def struttura():
 
 
 def lavori_da_struttura(urn_legge, lex2atto, atto_info):
-    """I documenti/lavori parlamentari di una legge, letti dalla struttura."""
+    """I documenti/lavori parlamentari di una legge, letti dalla struttura.
+
+    La struttura e' indicizzata per URN in forma-anno (normalizza_urn): l'URN
+    dell'archivio ha la data, quindi la chiave di lettura va normalizzata. Il
+    documento conserva l'URN dell'archivio nel campo `urn_legge` (il collegamento)."""
+    chiave = normalizza_urn(urn_legge)
     documenti = []
-    for at in lex2atto.get(urn_legge) or []:
+    for at in lex2atto.get(chiave) or []:
         info = atto_info.get(at) or {}
         legislatura = info.get("legislatura", "")
         data = info.get("data", "")
