@@ -105,6 +105,11 @@ TESTATE = {
 
 # dati.camera.it applica rate-limit: si sta gentili e si riprova sui 5xx.
 PAUSA_FRA_RICHIESTE = 1.0
+# pausa fissa fra una legge e l'altra, anche quando la legge non ha documenti:
+# senza, un giro che scorre decine di leggi senza lavori martella il portale e
+# comincia a rispondere 200-vuoto (rate-limit "morbido"), facendo sembrare la
+# fonte sprovvista di lavori. (misurato il 7.11.2026)
+PAUSA_FRA_LEGGI = 0.6
 PAUSA_OGNI = 50
 PAUSA_LUNGA = 3.0
 TENTATIVI = 6
@@ -682,8 +687,8 @@ def sincronizza(args):
         vacui = 0
 
         if not documenti:
-            log("    %s: nessun lavoro parlamentare (legislatura pre-repubblicana?)"
-                % urn_legge)
+            log("    %s: nessun lavoro parlamentare" % urn_legge)
+            time.sleep(PAUSA_FRA_LEGGI)
             continue
 
         if indice and not args.rifai:
@@ -730,6 +735,7 @@ def sincronizza(args):
                 time.sleep(PAUSA_LUNGA)
                 log("  ... %d documenti, %d falliti, %.0f s"
                     % (totale_nuovi, totale_falliti, time.time() - inizio))
+        time.sleep(PAUSA_FRA_LEGGI)
         if k % 200 == 0 and k > 0:
             log("  ... %d leggi viste, %d documenti, %.0f s"
                 % (k, totale_nuovi, time.time() - inizio))
