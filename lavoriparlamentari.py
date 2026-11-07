@@ -187,15 +187,32 @@ def richiesta(url, timeout=90, tentativi=TENTATIVI, binario=False):
 
 
 def rdf_triple(texto):
-    """Parser minimale del RDF in text/plain: iteratore (s, p, o)."""
+    """Parser minimale del RDF in text/plain: iteratore (s, p, o).
+
+    L'oggetto puo' essere un IRI fra <…>, un letterale fra virgolette (con i
+    punti dentro) oppure un token. La regex riconosce i tre casi e non lascia
+    spazi di coda nell'oggetto (era il difetto che faceva scartare gli IRI)."""
+    rx = re.compile(
+        r'^(\S+)\s+<([^>]+)>\s+'
+        r'(?:(<[^>]+>)|"((?:[^"\\]|\\.)*)"|([^\r\n][^\r\n]*?))'
+        r'\s*\.\s*$')
     for riga in texto.splitlines():
         riga = riga.strip()
         if not riga or riga == ".":
             continue
-        m = re.match(r'^(.*?)\s*<([^>]*)>\s*(.*?)\.$', riga)
+        m = rx.match(riga)
         if not m:
             continue
-        yield m.group(1).strip(), m.group(2), m.group(3).strip()
+        subj = m.group(1).strip()
+        pred = m.group(2)
+        if m.group(3):
+            obj = m.group(3)                # <http://...>
+        elif m.group(4) is not None:
+            obj = '"%s"' % m.group(4)       # letterale: si tengono le virgolette
+        else:
+            obj = m.group(5).strip()
+        if subj and pred and obj:
+            yield subj, pred, obj
 
 
 def rdf_oggetti(texto, predicato):
