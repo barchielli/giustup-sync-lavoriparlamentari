@@ -631,6 +631,11 @@ def scheda_documento(urn_legge, legge, d, testo):
             if m:
                 anno = int(m.group(1))
     anno = anno or legge["anno"]
+    # Il campo `data` dell'indice è di tipo date: OpenSearch rifiuta la stringa
+    # vuota. Per gli atti senza data (una schiera di leggi antiche) si scrive
+    # None — un valore mancante — invece di una stringa che romperebbe il giro.
+    if not data:
+        data = None
 
     categoria = d["categoria"]
     categoria_nome = ("Documento dei lavori preparatori" if categoria == "documento"
