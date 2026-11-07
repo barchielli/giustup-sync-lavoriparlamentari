@@ -541,15 +541,14 @@ def struttura():
         if legislatura:
             info.setdefault("legislatura", legislatura)
 
-    for i in range(0, len(atti), 800):
-        valori = " ".join("<%s>" % u for u in atti[i:i + 800])
+    for i in range(0, len(atti), 400):
+        valori = " ".join("<%s>" % u for u in atti[i:i + 400])
         q = ("SELECT ?atto ?pdf ?scheda ?label ?data ?legisl WHERE { "
              "VALUES ?atto { %s } "
-             "?atto a <http://dati.camera.it/ocd/atto> . "
-             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/relation> ?pdf } . "
-             "OPTIONAL { ?atto <http://purl.org/dc/terms/isReferencedBy> ?scheda } . "
-             "OPTIONAL { ?atto <http://www.w3.org/2000/01/rdf-schema#label> ?label } . "
-             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/date> ?data } . "
+             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/relation> ?pdf } "
+             "OPTIONAL { ?atto <http://purl.org/dc/terms/isReferencedBy> ?scheda } "
+             "OPTIONAL { ?atto <http://www.w3.org/2000/01/rdf-schema#label> ?label } "
+             "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/date> ?data } "
              "OPTIONAL { ?atto <http://dati.camera.it/ocd/rif_leg> ?legisl } }" % valori)
         for r in sparql_righe(q, limite=100000):
             a = r.get("atto")
@@ -558,7 +557,7 @@ def struttura():
             agg(a, pdf=r.get("pdf"), titolo=r.get("label"), data=r.get("data"),
                 scheda=r.get("scheda"),
                 legislatura=(r.get("legisl", "").rsplit("_", 1)[-1] if r.get("legisl") else ""))
-        log("    struttura: %d/%d atti" % (min(i + 800, len(atti)), len(atti)))
+        log("    struttura: %d/%d atti" % (min(i + 400, len(atti)), len(atti)))
     return lex2atto, atto_info
 
 
