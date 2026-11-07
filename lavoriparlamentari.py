@@ -89,6 +89,7 @@ PREFISSO_PDF = "contentstore/lavoriparlamentari"
 CHIAVE_STATO = "stato-sync/lavoriparlamentari.json"
 
 DATI = "https://dati.camera.it/ocd"
+SPARQL = "https://dati.camera.it/sparql"
 LEGGE_IRI = DATI + "/legge.rdf/L{anno}_{numero}?output=text/plain"
 # La scheda lavori preparatori della Camera, raggiungibile dall'atto con l'URN
 # stabile (il valore di `isReferencedBy` nell'RDF dell'atto).
