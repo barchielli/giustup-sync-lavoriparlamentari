@@ -203,13 +203,15 @@ def rdf_oggetti(texto, predicato):
 
 
 def oggetto_iri(o):
-    """`<http://...>` -> l'IRI; un letterale -> None."""
+    """`<http://...>` -> l'IRI (togliendo spazi di coda); un letterale -> None."""
+    o = (o or "").strip()
     if o.startswith("<") and o.endswith(">"):
         return o[1:-1]
     return None
 
 
 def letterale(o):
+    o = (o or "").strip()
     m = re.match(r'^"(.*)"(\^\^.*)?$', o, re.S)
     return m.group(1) if m else o
 
@@ -439,8 +441,9 @@ def estratti_da_atto(urn_legge, atto_iri):
     scheda = [letterale(o) for s, p, o in righe if "dc/terms/isReferencedBy>" in p]
     titolo = next((letterale(o) for s, p, o in righe if "rdf-schema#label>" in p), "")
     data = next((letterale(o) for s, p, o in righe if "dc/elements/1.1/date>" in p), "")
-    legislatura = next((o for s, p, o in righe if "ocd/rif_leg>" in p), "")
-    legislatura = re.sub(r".*legislatura\.rdf/repubblica_", "", legislatura)
+    legislatura = next((oggetto_iri(o) for s, p, o in righe if "ocd/rif_leg>" in p), "") or ""
+    if legislatura:
+        legislatura = legislatura.rsplit("_", 1)[-1]
 
     documenti = []
     # i PDF dei documenti: uno per ogni file distinto (solo i dc:relation in pdf)
