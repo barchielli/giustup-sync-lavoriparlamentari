@@ -450,92 +450,124 @@ def leggi_da_indice(anno_da=1948, anno_a=9999):
 
 # ------------------------------------------------- lavori parlamentari
 
-def estratti_da_atto(urn_legge, atto_iri):
-    """I documenti dei lavori parlamentari di un atto Camera.
+def sparql_righe(consulta, limite=3000):
+    """Esegue una SELECT SPARQL e restituisce le righe (list[dict]).
 
-    Attraverso l'RDF dell'atto espone:
-      - i PDF dei documenti (dc:relation -> documenti.camera.it/...pdf);
-      - la scheda lavori preparatori (dc:terms:isReferencedBy -> camera.it...);
-      - il servizio documenti (getDocumento.ashx?sezione=lavori).
-    Restituisce una lista di "documenti": dic per PDF e un record per la scheda.
-    """
-    testo = richiesta(atto_iri + "?output=text/plain")
-    righe = list(rdf_triple(testo))
-    relations = [letterale(o) for s, p, o in righe
-                 if "dc/elements/1.1/relation>" in p and ".pdf" in o]
-    scheda = [letterale(o) for s, p, o in righe if "dc/terms/isReferencedBy>" in p]
-    titolo = next((letterale(o) for s, p, o in righe if "rdf-schema#label>" in p), "")
-    data = next((letterale(o) for s, p, o in righe if "dc/elements/1.1/date>" in p), "")
-    legislatura = next((oggetto_iri(o) for s, p, o in righe if "ocd/rif_leg>" in p), "") or ""
-    if legislatura:
-        legislatura = legislatura.rsplit("_", 1)[-1]
+    La Camera espone i dati aperti SOLO via SPARQL (niente dump in blocco) e
+    applica rate-limit alle risorse per-legge: una query in blocco che estrae la
+    struttura in poche chiamate e' la via robusta per migliaia di leggi. Si
+    pagina con LIMIT/OFFSET finche' il portale restituisce righe."""
+    righe = []
+    offset = 0
+    while True:
+        q = "%s LIMIT %d OFFSET %d" % (consulta.rstrip().rstrip(";"), limite, offset)
+        url = SPARQL + "?" + urllib.parse.urlencode({"query": q})
+        req = urllib.request.Request(url, headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": TESTATE["User-Agent"]})
+        with urllib.request.urlopen(req, timeout=240) as r:
+            dati = json.loads(r.read().decode("utf-8"))
+        blocco = dati.get("results", {}).get("bindings", [])
+        if not blocco:
+            break
+        for riga in blocco:
+            righe.append({k: v.get("value", "") for k, v in riga.items()})
+        log("    struttura: %d righe fin qui" % len(righe))
+        if len(blocco) < limite:
+            break
+        offset += limite
+    return righe
 
+
+Q_LEGGE_ATTO = (
+    "SELECT ?lex ?atto WHERE { "
+    "?legge a <http://dati.camera.it/ocd/legge> ; "
+    "<http://dati.camera.it/ocd/lex> ?lex ; "
+    "<http://dati.camera.it/ocd/lavoriPreparatori> ?lp . "
+    "?lp <http://dati.camera.it/ocd/rif_attoCamera> ?atto }")
+Q_ATTO_PDF = (
+    "SELECT ?atto ?doc WHERE { "
+    "?atto <http://purl.org/dc/elements/1.1/relation> ?doc . "
+    "FILTER(CONTAINS(STR(?doc), \".pdf\")) }")
+Q_ATTO_SCHEDA = (
+    "SELECT ?atto ?scheda WHERE { "
+    "?atto <http://purl.org/dc/terms/isReferencedBy> ?scheda . "
+    "FILTER(CONTAINS(STR(?scheda), \"camera.it\")) }")
+Q_ATTO_META = (
+    "SELECT ?atto ?label ?data ?legisl WHERE { "
+    "?atto a <http://dati.camera.it/ocd/atto> . "
+    "OPTIONAL { ?atto <http://www.w3.org/2000/01/rdf-schema#label> ?label } "
+    "OPTIONAL { ?atto <http://purl.org/dc/elements/1.1/date> ?data } "
+    "OPTIONAL { ?atto <http://dati.camera.it/ocd/rif_leg> ?legisl } }")
+
+
+def struttura():
+    """La mappa legge(urn)->atti e atto->documenti, caricata in blocco via SPARQL.
+
+    Ritorna (lex2atto, atto_info): il primo mappa l'URN Normattiva della legge
+    (la chiave dell'archivio, forma con data: urn:nir:stato:legge:2018-08-09;98)
+    agli IRi degli atti Camera; il secondo gli IRi degli atti ai loro documenti
+    (pdf, scheda, titolo, data, legislatura)."""
+    lex2atto = {}
+    for r in sparql_righe(Q_LEGGE_ATTO):
+        urn = r.get("lex", "").split("N2Ls?")[-1]
+        atto = r.get("atto", "")
+        if not urn or not atto:
+            continue
+        lista = lex2atto.setdefault(urn, [])
+        if atto not in lista:
+            lista.append(atto)
+
+    atto_info = {}
+    for r in sparql_righe(Q_ATTO_PDF):
+        a = r.get("atto")
+        doc = r.get("doc", "")
+        if not a or ".pdf" not in doc:
+            continue
+        l = atto_info.setdefault(a, {}).setdefault("pdf", [])
+        if doc not in l:
+            l.append(doc)
+    for r in sparql_righe(Q_ATTO_SCHEDA):
+        a = r.get("atto")
+        if a:
+            atto_info.setdefault(a, {})["scheda"] = r.get("scheda", "")
+    for r in sparql_righe(Q_ATTO_META):
+        a = r.get("atto")
+        if a:
+            info = atto_info.setdefault(a, {})
+            if r.get("label"):
+                info["titolo"] = r["label"]
+            if r.get("data"):
+                info["data"] = r["data"]
+            if r.get("legisl"):
+                info["legislatura"] = r["legisl"].rsplit("_", 1)[-1]
+    return lex2atto, atto_info
+
+
+def lavori_da_struttura(urn_legge, lex2atto, atto_info):
+    """I documenti/lavori parlamentari di una legge, letti dalla struttura."""
     documenti = []
-    # i PDF dei documenti: uno per ogni file distinto (solo i dc:relation in pdf)
-    for pdf in dict.fromkeys(relations):
-        nome = pdf.rstrip("/").rsplit("/", 1)[-1] if "/" in pdf else pdf
-        documenti.append({
-            "urn_legge": urn_legge,
-            "atto_iri": atto_iri,
-            "legislatura": legislatura,
-            "data": data,
-            "titolo": titolo,
-            "documento_fonte_url": pdf,
-            "documento_nome": nome,
-            "categoria": "documento",
-        })
-    # la scheda lavori preparatori (sempre presente), come collegamento
-    if scheda:
-        documenti.append({
-            "urn_legge": urn_legge,
-            "atto_iri": atto_iri,
-            "legislatura": legislatura,
-            "data": data,
-            "titolo": titolo,
-            "documento_fonte_url": scheda[0],
-            "documento_nome": "",
-            "categoria": "scheda",
-        })
-    return documenti
-
-
-def lavori_preparatori(urn_legge, anno, num):
-    """Per una legge: la lista dei documenti/lavori parlamentari collegati.
-
-    La legge.rdf espone i lavori in due modi possibili:
-      - `rif_attoCamera` -> `attocamera.rdf/...`, che porta i PDF dei documenti
-        (dc:relation) e la scheda lavori preparatori (isReferencedBy);
-      - per le leggi senza atto Camera resta comunque `isReferencedBy` -> la
-        scheda lavori (documenti.camera.it/service, che risolve sulla scheda
-        camera.it). Si registra come scheda, cosi' ogni legge dell'era
-        repubblicana ha almeno il collegamento.
-    """
-    iri = LEGGE_IRI.format(anno=anno, numero=num)
-    testo = richiesta(iri)
-    righe = list(rdf_triple(testo))
-    lex = [letterale(o) for s, p, o in righe if "ocd/lex>" in p]
-    atti = [oggetto_iri(o) for s, p, o in righe if "ocd/rif_attoCamera>" in p]
-    atti = [a for a in atti if a]
-    servizio = [letterale(o) for s, p, o in righe if "dc/terms/isReferencedBy>" in p]
-    servizio = [u for u in servizio if "getDocumento.ashx" in u or "camera.it" in u]
-
-    documenti = []
-    for at in atti:
-        documenti.extend(estratti_da_atto(urn_legge, at))
-    if not atti:
-        # niente atto Camera: resta almeno la scheda lavori preparatori
-        for scheda_url in dict.fromkeys(servizio):
+    for at in lex2atto.get(urn_legge) or []:
+        info = atto_info.get(at) or {}
+        legislatura = info.get("legislatura", "")
+        data = info.get("data", "")
+        titolo = info.get("titolo", "")
+        scheda = info.get("scheda", "")
+        for pdf in dict.fromkeys(info.get("pdf") or []):
+            nome = pdf.rstrip("/").rsplit("/", 1)[-1] if "/" in pdf else pdf
             documenti.append({
-                "urn_legge": urn_legge,
-                "atto_iri": "",
-                "legislatura": "",
-                "data": "",
-                "titolo": "",
-                "documento_fonte_url": scheda_url,
-                "documento_nome": "",
+                "urn_legge": urn_legge, "atto_iri": at,
+                "legislatura": legislatura, "data": data, "titolo": titolo,
+                "documento_fonte_url": pdf, "documento_nome": nome,
+                "categoria": "documento",
+            })
+        if scheda:
+            documenti.append({
+                "urn_legge": urn_legge, "atto_iri": at,
+                "legislatura": legislatura, "data": data, "titolo": titolo,
+                "documento_fonte_url": scheda, "documento_nome": "",
                 "categoria": "scheda",
             })
-    # le schede duplicate nella stessa legge non si ripetono
     visti = set()
     unici = []
     for d in documenti:
@@ -543,7 +575,7 @@ def lavori_preparatori(urn_legge, anno, num):
             continue
         visti.add(d["documento_fonte_url"])
         unici.append(d)
-    return lex, atti, unici
+    return unici
 
 
 # ---------------------------------------------------- un documento
@@ -660,6 +692,14 @@ def sincronizza(args):
     leggi = leggi_da_indice(int(args.da_anno), int(args.a_anno))
     log("leggi da processare: %d" % len(leggi))
 
+    # La struttura (legge->atti, atto->documenti) si carica una volta sola in
+    # blocco via SPARQL: e' la via che non innesca il rate-limit delle risorse
+    # per-legge di dati.camera.it e costa poche chiamate anche per lo storico.
+    log("scarico la struttura dei lavori parlamentari via SPARQL")
+    lex2atto, atto_info = struttura()
+    log("struttura caricata: %d leggi con lavori, %d atti"
+        % (len(lex2atto), len(atto_info)))
+
     inizio = time.time()
     totale_nuovi = totale_visti = totale_falliti = 0
     falliti, righe_manifesto = [], []
@@ -694,16 +734,7 @@ def sincronizza(args):
         legno = leggi[urn_legge]
         anno, num = legno["anno"], legno["num"]
         totale_visti += 1
-        try:
-            lex, atti, documenti = lavori_preparatori(urn_legge, anno, num)
-        except Exception as e:
-            log("    legge %s (%s): %s" % (urn_legge, anno, e))
-            vacui += 1
-            if vacui >= FALLIMENTI_DI_FILA:
-                log("troppe leggi di fila senza risposta: mi fermo")
-                svuota_lotto()
-                return 2
-            continue
+        documenti = lavori_da_struttura(urn_legge, lex2atto, atto_info)
         vacui = 0
 
         if not documenti:
