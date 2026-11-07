@@ -456,14 +456,17 @@ def sparql_righe(consulta, limite=3000):
 
     La Camera espone i dati aperti SOLO via SPARQL (niente dump in blocco) e
     applica rate-limit alle risorse per-legge: una query in blocco che estrae la
-    struttura in poche chiamate e' la via robusta per migliaia di leggi. Si
-    pagina con LIMIT/OFFSET finche' il portale restituisce righe."""
+    struttura in poche chiamate e' la via robusta per migliaia di leggi. Si usa
+    il POST form-encoded (lo standard SPARQL) perche' con la GET l'URL, che con
+    le query piu' grandi (il VALUES sugli atti) supera la lunghezza massima,
+    viene rifiutato con 414. Si pagina con LIMIT/OFFSET finche' restituisce righe."""
     righe = []
     offset = 0
     while True:
         q = "%s LIMIT %d OFFSET %d" % (consulta.rstrip().rstrip(";"), limite, offset)
-        url = SPARQL + "?" + urllib.parse.urlencode({"query": q})
-        req = urllib.request.Request(url, headers={
+        dati = urllib.parse.urlencode({"query": q}).encode("utf-8")
+        req = urllib.request.Request(SPARQL, data=dati, method="POST", headers={
+            "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/sparql-results+json",
             "User-Agent": TESTATE["User-Agent"]})
         with urllib.request.urlopen(req, timeout=240) as r:
