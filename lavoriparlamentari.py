@@ -475,16 +475,50 @@ def estratti_da_atto(urn_legge, atto_iri):
 
 
 def lavori_preparatori(urn_legge, anno, num):
-    """Per una legge: (atto Camera, documenti estratti)."""
+    """Per una legge: la lista dei documenti/lavori parlamentari collegati.
+
+    La legge.rdf espone i lavori in due modi possibili:
+      - `rif_attoCamera` -> `attocamera.rdf/...`, che porta i PDF dei documenti
+        (dc:relation) e la scheda lavori preparatori (isReferencedBy);
+      - per le leggi senza atto Camera resta comunque `isReferencedBy` -> la
+        scheda lavori (documenti.camera.it/service, che risolve sulla scheda
+        camera.it). Si registra come scheda, cosi' ogni legge dell'era
+        repubblicana ha almeno il collegamento.
+    """
     iri = LEGGE_IRI.format(anno=anno, numero=num)
     testo = richiesta(iri)
-    lex = [letterale(o) for s, p, o in rdf_triple(testo) if "ocd/lex>" in p]
-    atti = [oggetto_iri(o) for s, p, o in rdf_triple(testo) if "ocd/rif_attoCamera>" in p]
+    righe = list(rdf_triple(testo))
+    lex = [letterale(o) for s, p, o in righe if "ocd/lex>" in p]
+    atti = [oggetto_iri(o) for s, p, o in righe if "ocd/rif_attoCamera>" in p]
     atti = [a for a in atti if a]
+    servizio = [letterale(o) for s, p, o in righe if "dc/terms/isReferencedBy>" in p]
+    servizio = [u for u in servizio if "getDocumento.ashx" in u or "camera.it" in u]
+
     documenti = []
     for at in atti:
         documenti.extend(estratti_da_atto(urn_legge, at))
-    return lex, atti, documenti
+    if not atti:
+        # niente atto Camera: resta almeno la scheda lavori preparatori
+        for scheda_url in dict.fromkeys(servizio):
+            documenti.append({
+                "urn_legge": urn_legge,
+                "atto_iri": "",
+                "legislatura": "",
+                "data": "",
+                "titolo": "",
+                "documento_fonte_url": scheda_url,
+                "documento_nome": "",
+                "categoria": "scheda",
+            })
+    # le schede duplicate nella stessa legge non si ripetono
+    visti = set()
+    unici = []
+    for d in documenti:
+        if d["documento_fonte_url"] in visti:
+            continue
+        visti.add(d["documento_fonte_url"])
+        unici.append(d)
+    return lex, atti, unici
 
 
 # ---------------------------------------------------- un documento
