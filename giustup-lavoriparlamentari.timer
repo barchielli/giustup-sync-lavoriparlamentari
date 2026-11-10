@@ -1,10 +1,9 @@
-[Unit]
-Description=Giustup: giro notturno dei lavori parlamentari
+﻿[Unit]
+Description=Settimanale, sabato 03:15 UTC: i lavori parlamentari
 
 [Timer]
-OnCalendar=*-*-* 03:15:00
-Persistent=true
-Unit=giustup-lavoriparlamentari.service
+OnCalendar=Sat *-*-* 03:15:00
+Persistent=false
 
 [Install]
 WantedBy=timers.target
