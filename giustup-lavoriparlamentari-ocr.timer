@@ -1,0 +1,9 @@
+﻿[Unit]
+Description=Ogni notte alle 00:30 UTC: OCR dei lavori parlamentari
+
+[Timer]
+OnCalendar=*-*-* 00:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

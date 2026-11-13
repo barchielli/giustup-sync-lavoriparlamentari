@@ -65,6 +65,7 @@ import csv
 import datetime
 import hashlib
 import json
+import shutil
 import os
 import re
 import ssl
@@ -959,6 +960,116 @@ def indicizza_da_s3(args):
     return riassunto["esito"]
 
 
+
+
+# ------------------------------------------------------------------ OCR
+def ocr_disponibile():
+    """Servono poppler (pdftotext, pdftoppm) e tesseract con la lingua italiana."""
+    manca = [p for p in ("pdftotext", "pdftoppm", "tesseract") if not shutil.which(p)]
+    if manca:
+        return False, "mancano: " + ", ".join(manca)
+    try:
+        lingue = subprocess.run(["tesseract", "--list-langs"], capture_output=True, timeout=30)
+        if b"ita" not in (lingue.stdout + lingue.stderr):
+            return False, "tesseract non ha la lingua italiana"
+    except Exception as e:
+        return False, "tesseract non risponde: %s" % e
+    return True, "ok"
+
+
+def testo_da_ocr(percorso, cartella):
+    """Riconosce il testo di un PDF scansionato, pagina per pagina."""
+    try:
+        subprocess.run(["pdftoppm", "-r", "200", "-gray", "-png", percorso,
+                        os.path.join(cartella, "p")], capture_output=True, timeout=1800)
+    except Exception as e:
+        return "", "pdftoppm: %s" % e
+    pagine = sorted(x for x in os.listdir(cartella) if x.endswith(".png"))
+    pezzi = []
+    for pagina in pagine:
+        try:
+            esito = subprocess.run(["tesseract", os.path.join(cartella, pagina), "stdout", "-l", "ita"],
+                                   capture_output=True, timeout=600)
+            pezzi.append(esito.stdout.decode("utf-8", "replace"))
+        except Exception:
+            continue
+    return "\n".join(pezzi), None
+
+
+def passa_ocr(args):
+    """Riconosce il testo dei documenti che in indice hanno poco o niente.
+
+    IL PROBLEMA, MISURATO IL 13.11.2026: 31.342 documenti su 36.871 hanno meno di
+    200 caratteri, e 30.843 meno di 50. Sono le scansioni dei testi di progetto di
+    legge: il PDF si apre, ma dentro non c e testo da cercare. Il documento entra
+    in indice con `testo` vuoto e nessuno lo trova. Questo giro scarica il PDF da
+    S3, lo riconosce con tesseract e riscrive nell indice soltanto `testo`,
+    `caratteri` e `ocr_fatto`. Il PDF su S3 non si tocca.
+    """
+    ok, perche = ocr_disponibile()
+    if not ok:
+        log("OCR non disponibile: %s" % perche)
+        return 2
+    cliente = s3()
+    fatti = errori = esaminati = 0
+    dopo = None
+    t0 = time.time()
+    while True:
+        corpo = {"size": 50,
+                 "query": {"range": {"caratteri": {"lt": 200}}},
+                 "_source": ["chiave_s3", "titolo", "caratteri", "anno"],
+                 "sort": [{"id_nodo": "asc"}]}
+        if dopo:
+            corpo["search_after"] = dopo
+        esito = os_chiama("/%s/_search" % IDX, corpo)
+        colpi = (esito.get("hits") or {}).get("hits") or []
+        if not colpi:
+            break
+        righe_bulk = []
+        for h in colpi:
+            s = h.get("_source") or {}
+            chiave = s.get("chiave_s3") or ""
+            esaminati += 1
+            if not chiave:
+                continue
+            cartella = tempfile.mkdtemp(prefix="lavori-ocr-")
+            percorso = os.path.join(cartella, "doc.pdf")
+            try:
+                dati = cliente.get_object(Bucket=BUCKET, Key=chiave)["Body"].read()
+                with open(percorso, "wb") as f:
+                    f.write(dati)
+                testo, errore = testo_da_ocr(percorso, cartella)
+                if errore:
+                    errori += 1
+                    log("    OCR %s: %s" % (chiave, errore))
+                    continue
+                if len(testo.strip()) <= (s.get("caratteri") or 0):
+                    continue
+                righe_bulk.append(json.dumps({"update": {"_index": IDX, "_id": h["_id"]}}))
+                righe_bulk.append(json.dumps({"doc": {"testo": testo,
+                                              "caratteri": len(testo),
+                                              "testo_scarso": len(testo) < 200,
+                                              "ocr_fatto": True}}, ensure_ascii=False))
+                fatti += 1
+                if fatti % 50 == 0:
+                    log("    %d riconosciuti, %d esaminati, %.0f s" % (fatti, esaminati, time.time() - t0))
+            except Exception as e:
+                errori += 1
+                log("    errore %s: %r" % (chiave, e))
+            finally:
+                shutil.rmtree(cartella, ignore_errors=True)
+            if args.massimo and fatti >= args.massimo:
+                break
+        if righe_bulk:
+            _bulk(righe_bulk)
+        dopo = colpi[-1].get("sort")
+        if args.massimo and fatti >= args.massimo:
+            break
+    log("OCR: %d riconosciuti su %d esaminati, %d errori, %.0f s"
+        % (fatti, esaminati, errori, time.time() - t0))
+    return 0
+
+
 def main():
     a = argparse.ArgumentParser(description="Sync dei lavori parlamentari per Giustup")
     a.add_argument("--prova", type=int, default=0,
@@ -975,9 +1086,14 @@ def main():
     a.add_argument("--senza-s3", action="store_true", help="non carica su S3")
     a.add_argument("--salva-record", action="store_true",
                    help="(scissione Milano) salva anche il record JSON su S3 per il motore")
+    a.add_argument("--ocr", action="store_true",
+                   help="riconosce il testo dei documenti scansionati (indice solo)")
     a.add_argument("--indicizza-da-s3", action="store_true",
                    help="(scissione motore) indicizza in OpenSearch i record lasciati su S3 da Milano")
     args = a.parse_args()
+
+    if args.ocr:
+        return passa_ocr(args)
 
     if args.indicizza_da_s3:
         return indicizza_da_s3(args)
