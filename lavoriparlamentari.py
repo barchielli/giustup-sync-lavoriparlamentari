@@ -1016,7 +1016,8 @@ def passa_ocr(args):
     t0 = time.time()
     while True:
         corpo = {"size": 50,
-                 "query": {"bool": {"filter": [{"range": {"caratteri": {"lt": 200}}}],
+                 "query": {"bool": {"filter": [{"range": {"caratteri": {"lt": 200}}},
+                                            {"range": {"anno": {"gte": args.anno_da}}}],
                            "must_not": [{"term": {"chiave_s3": ""}}]}},
                  "_source": ["chiave_s3", "titolo", "caratteri", "anno"],
                  "sort": [{"id_nodo": "asc"}]}
@@ -1087,6 +1088,8 @@ def main():
     a.add_argument("--senza-s3", action="store_true", help="non carica su S3")
     a.add_argument("--salva-record", action="store_true",
                    help="(scissione Milano) salva anche il record JSON su S3 per il motore")
+    a.add_argument("--anno-da", type=int, default=2000,
+                   help="per l OCR: solo i documenti di leggi da questo anno in poi")
     a.add_argument("--ocr", action="store_true",
                    help="riconosce il testo dei documenti scansionati (indice solo)")
     a.add_argument("--indicizza-da-s3", action="store_true",
