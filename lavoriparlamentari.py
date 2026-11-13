@@ -1016,7 +1016,8 @@ def passa_ocr(args):
     t0 = time.time()
     while True:
         corpo = {"size": 50,
-                 "query": {"range": {"caratteri": {"lt": 200}}},
+                 "query": {"bool": {"filter": [{"range": {"caratteri": {"lt": 200}}}],
+                           "must_not": [{"term": {"chiave_s3": ""}}]}},
                  "_source": ["chiave_s3", "titolo", "caratteri", "anno"],
                  "sort": [{"id_nodo": "asc"}]}
         if dopo:
