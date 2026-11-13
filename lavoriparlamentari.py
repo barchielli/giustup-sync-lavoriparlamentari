@@ -977,10 +977,10 @@ def ocr_disponibile():
     return True, "ok"
 
 
-def testo_da_ocr(percorso, cartella):
+def testo_da_ocr(percorso, cartella, massimo_pagine=25):
     """Riconosce il testo di un PDF scansionato, pagina per pagina."""
     try:
-        subprocess.run(["pdftoppm", "-r", "200", "-gray", "-png", percorso,
+        subprocess.run(["pdftoppm", "-r", "150", "-gray", "-png", "-f", "1", "-l", str(massimo_pagine), percorso,
                         os.path.join(cartella, "p")], capture_output=True, timeout=1800)
     except Exception as e:
         return "", "pdftoppm: %s" % e

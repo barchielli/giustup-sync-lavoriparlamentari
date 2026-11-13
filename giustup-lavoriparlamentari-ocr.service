@@ -1,9 +1,11 @@
 ﻿[Unit]
-Description=OCR dei lavori parlamentari scansionati (indice solo, dal 2000)
+Description=OCR dei lavori parlamentari scansionati (indice solo, dal 2000, prime 25 pagine)
 After=network-online.target
 
 [Service]
 Type=oneshot
 TimeoutStartSec=0
+Nice=10
+CPUQuota=200%
 WorkingDirectory=/opt/giustup-sync-lavoriparlamentari
-ExecStart=/usr/bin/flock -n /run/lock/giustup-lavoriparlamentari-ocr.lock /usr/bin/python3 /opt/giustup-sync-lavoriparlamentari/lavoriparlamentari.py --ocr --massimo 80
+ExecStart=/usr/bin/flock -n /run/lock/giustup-lavoriparlamentari-ocr.lock /usr/bin/python3 /opt/giustup-sync-lavoriparlamentari/lavoriparlamentari.py --ocr --massimo 40
