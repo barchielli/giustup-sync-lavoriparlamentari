@@ -1053,6 +1053,9 @@ def passa_ocr(args):
                                               "testo_scarso": len(testo) < 200,
                                               "ocr_fatto": True}}, ensure_ascii=False))
                 fatti += 1
+                if len(righe_bulk) >= 20:
+                    _bulk(righe_bulk)
+                    righe_bulk = []
                 if fatti % 50 == 0:
                     log("    %d riconosciuti, %d esaminati, %.0f s" % (fatti, esaminati, time.time() - t0))
             except Exception as e:
