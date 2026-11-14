@@ -8,4 +8,7 @@ TimeoutStartSec=0
 Nice=10
 CPUQuota=200%
 WorkingDirectory=/opt/giustup-sync-lavoriparlamentari
-ExecStart=/usr/bin/flock -n /run/lock/giustup-lavoriparlamentari-ocr.lock /usr/bin/python3 /opt/giustup-sync-lavoriparlamentari/lavoriparlamentari.py --ocr --massimo 40
+# Cinque documenti a notte: misurato il 14.11.2026, un documento da 25 pagine costa
+# 15 minuti (39 secondi a pagina su queste scansioni dattiloscritte). Con il tetto
+# piu alto il giro invaderebbe i lavori delle 01:40.
+ExecStart=/usr/bin/flock -n /run/lock/giustup-lavoriparlamentari-ocr.lock /usr/bin/python3 /opt/giustup-sync-lavoriparlamentari/lavoriparlamentari.py --ocr --massimo 5
