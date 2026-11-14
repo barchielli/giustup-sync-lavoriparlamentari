@@ -1053,7 +1053,7 @@ def passa_ocr(args):
                                               "testo_scarso": len(testo) < 200,
                                               "ocr_fatto": True}}, ensure_ascii=False))
                 fatti += 1
-                if len(righe_bulk) >= 20:
+                if len(righe_bulk) >= 2:
                     _bulk(righe_bulk)
                     righe_bulk = []
                 if fatti % 50 == 0:
